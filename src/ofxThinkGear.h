@@ -3,19 +3,27 @@
 //  ofxThinkGear
 //
 //  Created by Akira Hayasaka on 8/24/12.
-//  Copyright (c) 2012 ﾟ･:,｡ﾟ･:,｡★ﾟ･:,｡ﾟ･:,｡☆ﾟ･:,｡ﾟ･:,｡★ﾟ･:,｡ﾟ･:,｡☆. All rights reserved.
+//  Copyright (c) 2012 All rights reserved.
 //
+//
+//  Forked repo by Ivaylo Getov April 2014
+//
+//  Place ThinkGear.bundle inside "data" folder
 
-#ifndef ofxThinkGear_ofxThinkGear_h
-#define ofxThinkGear_ofxThinkGear_h
 
+#pragma once
 #include "ofMain.h"
 
+#ifdef __APPLE__
+#include "CoreFoundation/CoreFoundation.h"
+#endif
+
 const int TG_BAUDRATE = 9600;
+//const int TG_BAUDRATE = 57600;
 
 // Data format for use with TG_Connect() and TG_SetDataFormat()
 const int TG_STREAM_PACKETS = 0;
-const int TG_STREAM_5VRAW = 1; 
+const int TG_STREAM_5VRAW = 1;
 const int TG_STREAM_FILE_PACKETS = 2;
 
 // Data type that can be requested from TG_GetValue()
@@ -55,49 +63,69 @@ public:
     }
     
     void setup(string deviceName = "/dev/tty.MindWaveMobile-DevA", int _id = 0)
-    {     
+    {
         tgID = _id;
         
+        //char curPath[1000];
+        //cout << getcwd(curPath, 1000) << endl;
+        //chdir(path);
+        
+#ifdef __APPLE__
+        CFBundleRef mainBundle = CFBundleGetMainBundle();
+        CFURLRef resourcesURL = CFBundleCopyResourcesDirectoryURL(mainBundle);
+        char path[PATH_MAX];
+        if (!CFURLGetFileSystemRepresentation(resourcesURL, TRUE, (UInt8 *)path, PATH_MAX))
+        {
+            // error!
+        }
+        CFRelease(resourcesURL);
+        
+        chdir(path);
+        std::cout << "Current Path: " << path << std::endl;
+#endif
+        
         bundleURL = CFURLCreateWithFileSystemPath(kCFAllocatorDefault,
-                                                  CFSTR("ThinkGear.bundle"), 
-                                                  kCFURLPOSIXPathStyle, 
-                                                  true);    
+                                                  CFSTR("../../../data/ThinkGear.bundle"),
+                                                  kCFURLPOSIXPathStyle,
+                                                  true);
+        
+        
         thinkGearBundle = CFBundleCreate(kCFAllocatorDefault, bundleURL);
         
-        if (!thinkGearBundle) 
+        if (!thinkGearBundle)
         {
             ofLog(OF_LOG_FATAL_ERROR) << "Error: Could not find ThinkGear.bundle. Does it exist in the current directory?";
             exit(1);
-        }    
+        }
         
         // set func ptrs
         TG_GetDriverVersion = (int(*)())CFBundleGetFunctionPointerForName(thinkGearBundle, CFSTR("TG_GetDriverVersion"));
         TG_GetNewConnectionId = (int(*)())CFBundleGetFunctionPointerForName(thinkGearBundle, CFSTR("TG_GetNewConnectionId"));
         TG_Connect = (int(*)(int, const char*, int, int))CFBundleGetFunctionPointerForName(thinkGearBundle, CFSTR("TG_Connect"));
-        TG_ReadPackets = (int(*)(int, int))CFBundleGetFunctionPointerForName(thinkGearBundle, CFSTR("TG_ReadPackets"));        
-        TG_GetValue = (float(*)(int, int))CFBundleGetFunctionPointerForName(thinkGearBundle, CFSTR("TG_GetValue"));        
+        TG_ReadPackets = (int(*)(int, int))CFBundleGetFunctionPointerForName(thinkGearBundle, CFSTR("TG_ReadPackets"));
+        TG_GetValue = (float(*)(int, int))CFBundleGetFunctionPointerForName(thinkGearBundle, CFSTR("TG_GetValue"));
         TG_GetValueStatus = (bool(*)(int, int))CFBundleGetFunctionPointerForName(thinkGearBundle, CFSTR("TG_GetValueStatus"));
         TG_Disconnect = (int(*)(int))CFBundleGetFunctionPointerForName(thinkGearBundle, CFSTR("TG_Disconnect"));
         TG_FreeConnection = (void(*)(int))CFBundleGetFunctionPointerForName(thinkGearBundle, CFSTR("TG_FreeConnection"));
         TG_EnableBlinkDetection = (int(*)(int, int))CFBundleGetFunctionPointerForName(thinkGearBundle, CFSTR("TG_EnableBlinkDetection"));
         
-        if (!TG_GetDriverVersion || 
-            !TG_GetNewConnectionId || 
-            !TG_Connect || 
-            !TG_ReadPackets || 
-            !TG_GetValue || 
-            !TG_Disconnect || 
+        if (!TG_GetDriverVersion ||
+            !TG_GetNewConnectionId ||
+            !TG_Connect ||
+            !TG_ReadPackets ||
+            !TG_GetValue ||
+            !TG_Disconnect ||
             !TG_FreeConnection ||
-            !TG_EnableBlinkDetection) 
+            !TG_EnableBlinkDetection)
         {
             ofLog(OF_LOG_FATAL_ERROR) << "Error: Expected functions in ThinkGear.bundle were not found.";
             exit(1);
-        }     
+        }
         
         connectionID = TG_GetNewConnectionId();
         
-        ofLog() << "connecting to " << deviceName << " ...";        
-        int conResult = TG_Connect(connectionID, deviceName.c_str(), TG_BAUDRATE, TG_STREAM_PACKETS);        
+        ofLog() << "connecting to " << deviceName << " ...";
+        int conResult = TG_Connect(connectionID, deviceName.c_str(), TG_BAUDRATE, TG_STREAM_PACKETS);
         
         if (conResult != 0)
         {
@@ -113,11 +141,11 @@ public:
     void update()
     {
         int numPackets = TG_ReadPackets(connectionID, -1);
-        if (numPackets > 0) 
+        if (numPackets > 0)
         {
             signalQuality = TG_GetValue(connectionID, TG_DATA_POOR_SIGNAL);
-
-            if (signalQuality == 0.0) 
+            
+            if (signalQuality == 0.0)
             {
                 if (TG_GetValueStatus(connectionID, TG_DATA_ATTENTION) != 0.0)
                 {
@@ -128,7 +156,7 @@ public:
                 {
                     float meditation = TG_GetValue(connectionID, TG_DATA_MEDITATION);
                     ofNotifyEvent(meditationChangeEvent, meditation);
-                }   
+                }
                 if (TG_GetValueStatus(connectionID, TG_DATA_BLINK_STRENGTH) != 0.0)
                 {
                     float blink = TG_GetValue(connectionID, TG_DATA_BLINK_STRENGTH);
@@ -148,9 +176,9 @@ public:
                         }
                         prevBlinkTime = ofGetElapsedTimeMillis();
                     }
-                }                   
+                }
             }
-        }        
+        }
     }
     
     void enableBlinkAsClick()
@@ -172,7 +200,12 @@ public:
     {
         return tgID;
     }
- 
+    
+    void freeConnection(){
+        TG_FreeConnection(tgID);
+        ofLog() << "disconnecting connection ID: " << tgID;
+    }
+    
     ofEvent<float> attentionChangeEvent;
     ofEvent<float> meditationChangeEvent;
     ofEvent<float> blinkChangeEvent;
@@ -184,7 +217,7 @@ public:
 protected:
     
     // function pointers;
-    int (*TG_GetDriverVersion)(); 
+    int (*TG_GetDriverVersion)();
     int (*TG_GetNewConnectionId)();
     int (*TG_Connect)(int, const char *, int, int);
     int (*TG_ReadPackets)(int, int);
@@ -192,13 +225,13 @@ protected:
     bool (*TG_GetValueStatus)(int, int);
     int (*TG_Disconnect)(int);
     void (*TG_FreeConnection)(int);
-    int (*TG_EnableBlinkDetection)(int, int);    
+    int (*TG_EnableBlinkDetection)(int, int);
     
 private:
     
     int tgID;
     
-    CFURLRef bundleURL; 
+    CFURLRef bundleURL;
     CFBundleRef thinkGearBundle;
     
     int connectionID;
@@ -206,6 +239,5 @@ private:
     
     bool bEnableBlinkAsClick;
     int prevBlinkTime;
+    
 };
-
-#endif
